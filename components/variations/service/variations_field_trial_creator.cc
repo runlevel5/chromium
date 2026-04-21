@@ -101,6 +101,9 @@ Study::CpuArchitecture GetCurrentCpuArchitecture() {
   if (process_arch == "x86") {
     return Study::X86_32;
   }
+  if (process_arch == "PPC_64") {
+    return Study::PPC64;
+  }
   if (process_arch == "x86_64") {
     std::string os_arch = base::SysInfo::OperatingSystemArchitecture();
     if (base::StartsWith(os_arch, "arm",
