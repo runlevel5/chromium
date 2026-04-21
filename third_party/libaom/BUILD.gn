@@ -293,6 +293,18 @@ if (current_cpu == "arm64" || current_cpu == "arm64e") {
   }
 }
 
+if (current_cpu == "ppc64") {
+  source_set("libaom_intrinsics_vsx") {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs += [ ":libaom_config" ]
+    sources = [
+      "//third_party/libaom/source/libaom/aom_ports/ppc_cpudetect.c",
+    ]
+    sources += aom_av1_common_intrin_vsx
+  }
+}
+
 static_library("libaom") {
   check_includes = false
   if (!is_debug && is_win) {
@@ -361,6 +373,9 @@ static_library("libaom") {
   if (current_cpu == "arm") {
     # This is needed by all arm boards due to aom_arm_cpu_caps()
     sources += [ "source/libaom/aom_ports/aarch32_cpudetect.c" ]
+  }
+  if (current_cpu == "ppc64") {
+    deps += [ ":libaom_intrinsics_vsx" ]
   }
   if (is_android) {
     deps += [ "//third_party/cpu_features:ndk_compat" ]

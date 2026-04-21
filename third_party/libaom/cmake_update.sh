@@ -168,6 +168,9 @@ egrep \
   "#define [A-Z0-9_]+[[:space:]]+[01]" "${CFG}/win/ia32/config/aom_config.h" \
   | awk '{print "%define " $2 " " $3}' > "${CFG}/win/ia32/config/aom_config.asm"
 
+reset_dirs linux/ppc64
+gen_config_files linux/ppc64 "${toolchain}/ppc-linux-gcc.cmake ${all_platforms}"
+
 # Copy linux configurations and modify for Windows.
 reset_dirs win/x64
 cp "${CFG}/linux/x64/config"/* "${CFG}/win/x64/config/"
