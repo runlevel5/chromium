@@ -1,0 +1,170 @@
+# PPC64LE port — status & plan
+
+Snapshot taken at Chromium 149.0.7805.0 on branch `ppc64le`.
+Patches imported from the Fedora `chromium.spec` PPC64LE set (authored against 144.x–147.x).
+
+---
+
+## 1. Patch-application result
+
+Inside `%ifarch ppc64le` the spec carries **38 patches**. Against our 149.x src-only tree:
+
+| Outcome | Count | Meaning |
+|---|---|---|
+| Applied & committed | 21 | Targets live inside the main `src` checkout and still match context. |
+| Deferred — third_party missing | 14 | Target files live in dirs populated by `gclient sync` (angle, skia, boringssl, libvpx source, breakpad, swiftshader, webrtc, v8, dawn, lss). |
+| Deferred — context drift | 3 | File present but hunks drifted since 144/147 → 149: `0002-third_party-libvpx-Remove-bad-ppc64-config.patch`, `0002-regenerate-xnn-buildgn.patch`, `fix-different-data-layouts.patch`. |
+
+All 38 live under `patches/ppc64le/`; ordering in `series`; apply with `apply.sh` after `gclient sync`.
+
+One spec bug: `Patch398: 0001-Implement-support-for-PPC64-on-Linux.patch` references a file that does not exist (only lowercase variant is present). Safe to ignore.
+
+---
+
+## 2. Support coverage (what the patch set delivers)
+
+| Subsystem | Patches | Notes |
+|---|---|---|
+| Arch identification | `add-ppc64-architecture-string`, `add-ppc64-architecture-to-extensions`, `Rtc_base-system-arch.h-PPC` | Exposes `"PPC_64"` in `SysInfo`, `runtime.json`, WebRTC. `ARCH_CPU_PPC64` macro is already upstream in `build/build_config.h`. |
+| GN toolchain | Upstream already defines `clang_ppc64` and `ppc64` gcc toolchains in `build/toolchain/linux/BUILD.gn` and compile flags in `build/config/compiler/BUILD.gn`. | Build-system entry points exist. Downstream only tweaks. |
+| PartitionAlloc | `fix-partition-alloc-compile`, `fix-page-allocator-overflow`, `HACK-debian-clang-disable-pa-musttail` | Adds ppc64 to 64-bit-pointer list; 64 KiB page support (16384-byte alloc chunk, `kSuperPageSize/4` alignment); disables `[[clang::musttail]]` — **HACK**. |
+| Sandbox (seccomp-bpf) | `0001-sandbox-Enable-seccomp_bpf-for-ppc64` (1200 LoC), `0002-third_party-lss-kernel-structs`, `0009-sandbox-ignore-byte-span-error` | Adds ppc64 syscall numbers, LSS structs, BPF syscall ranges, renderer policy, broker host fix. |
+| BoringSSL | `0001-Add-PPC64-support-for-boringssl` (8935 LoC, covers AES-P8, GHASH-P8, ChaCha20/Poly1305 asm), `0002-Add-PPC64-generated-files-for-boringssl` (5763 LoC pregenerated .S) | Full ppc64le asm fast path — cherry-picked from upstream boringssl. |
+| libvpx | `0001-third_party-libvpx-Properly-generate-gni-on-ppc64`, `0002-Remove-bad-ppc64-config`, `0003-Add-ppc64-generated-config`, `0004-work-around-ambiguous-vsx`, `HACK-third_party-libvpx-use-generic-gnu` | Pregenerated rtcd/asm configs; disables broken VSX codepath that caused VP9 artifacts. |
+| libaom | `0001-Add-ppc64-target-to-libaom`, `0001-Add-pregenerated-config-for-libaom-on-ppc64` | Pregenerated AV1 decoder config. |
+| Skia | `skia-vsx-instructions`, `HACK-debian-clang-disable-skia-musttail` | Adds `opts("vsx")` target, `-mcpu=power9`, SSE-to-VSX intrinsics translation via `SkTypes.h` guards. |
+| Breakpad | `0001-Implement-support-for-ppc64-on-Linux` (727 LoC), `fix-breakpad-compile` | ppc64 minidump writer, VMX register dumping via ptrace NT_PPC_VMX. |
+| Crashpad | `0004-third_party-crashpad-port-curl-transport-ppc64` | libcurl transport port. |
+| V8 | `0001-Force-baseline-POWER8-AltiVec-VSX-CPU-features-when-` (Linux defaults to `-mcpu=power8 -maltivec -mvsx`), `0001-Enable-ppc64-pointer-compression`, `0002-Add-ppc64-trap-instructions` | V8 PPC64 **backend itself is upstream**; these only retune it. ⚠ upstream removal risk — see §4. |
+| WebRTC | `Rtc_base-system-arch.h-PPC` | Arch macro alignment. |
+| Dawn (WebGPU) | `dawn-fix-ppc64le-detection` | Platform.h detection; real backend coverage on ppc64 is unproven. |
+| XNNPACK | `0001-add-xnn-ppc64el-support`, `0002-regenerate-xnn-buildgn` | Fallback scalar path; no vectorized ppc64 kernels. |
+| Rust toolchain | `fix-rustc`, `fix-rust-linking` | Sets `rust_abi_target = "powerpc64le-unknown-linux-gnu"`; wraps shared-lib link in `--start-group`/`--end-group` so Rust `+whole-archive` rlibs don't deadlink. |
+| pthread / misc | `add-ppc64-pthread-stack-size` (128 KiB), `fix-unknown-warning-option-messages`, `fix-different-data-layouts`, `0001-third_party-pffft-Include-altivec.h-on-ppc64-with-SI`, `0001-third_party-angle-Include-missing-header-cstddef-in-` | Platform niggles. |
+| Build-system HACKs | `HACK-debian-clang-disable-base-musttail`, `HACK-debian-clang-disable-pa-musttail`, `HACK-debian-clang-disable-skia-musttail`, `HACK-third_party-libvpx-use-generic-gnu` | Flagged below. |
+| swiftshader | `0001-swiftshader-fix-build` | llvm-16 XCOFF workaround. |
+| Variations / `study.proto` | `fix-study-crash` | Field-trial crash on ppc64. |
+
+---
+
+## 3. What is NOT covered
+
+- **Widevine CDM.** No ppc64le build from Google exists. DRM-gated content (Netflix, Spotify web player, etc.) will not work. Patches only keep the build from breaking.
+- **VA-API / V4L2 acceleration.** Spec disables VA-API on non-x86/aarch64; no ppc64 hardware video path.
+- **WebGPU/Dawn backends.** Only platform detection is patched; no Vulkan/Metal/D3D12 backend is exercised on ppc64. Software fallback only.
+- **XNNPACK vector kernels.** Fallback scalar only; TensorFlow Lite / ML inference will be slow.
+- **Upstream CI coverage.** None; every Chromium major version rebases from scratch.
+- **V8 full-tier confirmation on 149.x.** The patch set only tunes V8; it doesn't port V8. Need to verify on a live `gclient sync` that the backend is still present in 149.x V8 (see risks).
+- **Mojo IPC shared memory alignment** for 64 KiB-page kernels: not audited. Cross-process shmem that assumes 4 KiB pages may regress.
+- **Atomic test fallout.** Chromium increasingly assumes POWER10/LSE-level atomics on aarch64; the equivalent on ppc64 is the POWER8 baseline set by `0001-Force-baseline-POWER8-...`. Any code relying on newer atomics (e.g., LSX-style) will need gating.
+- **Hardware destructive interference size.** Cache line is 128 B on POWER, generic patch exists (`chromium-130-hardware_destructive_interference_size.patch`) but it's not in the ppc64-only block — audit whether it still matters on 149.x.
+
+---
+
+## 4. Known risks & HACKs carrying technical debt
+
+| Risk | Detail | Mitigation |
+|---|---|---|
+| **V8 PPC64 upstream removal** | The IBM-maintained V8 PPC64 backend has been on the chopping block since 2024. If upstream has deleted it in the 149.x V8, the `0001-Enable-ppc64-pointer-compression` and `0002-Add-ppc64-trap-instructions` patches become nonsensical. | Verify on remote after `gclient sync`: `ls third_party/v8/src/codegen/ppc`. If empty, fall back to 148.x or pick up OpenPOWER's V8 fork. |
+| **`[[clang::musttail]]` disabled in 3 places** | HACK patches turn off musttail in base/compiler_specific.h, PA, and Skia. This disables tail-call optimization and can fragment stacks. | Investigate: current clang on Fedora 44 (16+) whether musttail is now supported on ppc64; if so, gate the `#define`s on clang version. |
+| **`-Wl,--fatal-warnings` off on ppc64** | `fix-different-data-layouts.patch` disables fatal linker warnings because an older clang's data layout (`e-m:e-i64:64-n32:64-...`) differs from rustc 1.73+'s (`...Fn32-...`). | Align clang/rustc major versions in the build env; re-enable `--fatal-warnings` once LLVM is new enough. |
+| **libvpx uses "generic-gnu"** | `HACK-third_party-libvpx-use-generic-gnu` forces the generic backend — no VSX for VP8/VP9. | Revisit libvpx's VSX path; the "ambiguous vsx" workaround (`0004-...-work-around-ambiguous-vsx`) suggests the real issue is libvpx upstream. |
+| **Pregenerated asm & configs** | libvpx, libaom, boringssl ship pregenerated `.S`/`.h`/rtcd files keyed to upstream source revisions. Each roll invalidates them. | Automate regeneration in a pre-roll script; commit it to `tools/ppc64/`. |
+| **Fedora/Debian patch leak** | 4 HACKs are labeled "debian". Not ppc64-specific — they're clang/rust toolchain workarounds. | Split into a separate "toolchain-workarounds" series; gate on clang/rustc version, not arch. |
+| **Version drift against upstream** | Patches target 144.x/147.x; applied to 149.x with fuzz=2. Every major version requires rebase. | See §5 action plan. |
+
+---
+
+## 5. Plan to get to a clean build
+
+**Stage 0 — Verify the environment.**
+1. On the remote build host (`tle@192.168.1.247`): install depot_tools, `gclient sync` into a full checkout of this branch.
+2. Sanity-check the V8 backend: `ls src/v8/src/codegen/ppc/`. If missing, decide whether to (a) pin to last known-good Chromium release that still ships V8-ppc64 or (b) pull in OpenPOWER's V8 fork as a third_party override.
+3. Log clang, rustc, GCC versions; `gn --version`.
+
+**Stage 1 — Land deferred patches.**
+1. `patches/ppc64le/apply.sh` — applies the 17 deferred patches.
+2. Rebase the 3 "context drift" patches by hand:
+   - `0002-third_party-libvpx-Remove-bad-ppc64-config.patch` — inspect current `third_party/libvpx/source/config/linux/ppc64/*` and update hunks.
+   - `0002-regenerate-xnn-buildgn.patch` — rerun XNNPACK build-gn generator with the ppc64el support patch applied first.
+   - `fix-different-data-layouts.patch` — the guard now just protects `--fatal-warnings`; hunk should still be a one-liner.
+3. Commit each rebase on top of `ppc64le` so bisect still works.
+
+**Stage 2 — First build attempt (debug component, clang, no rbe).**
+   ```
+   gn gen out/Release --args='
+     target_cpu="ppc64"
+     is_debug=false
+     is_component_build=true
+     is_clang=true
+     use_remoteexec=false
+     use_sysroot=false
+     use_custom_libcxx=false
+     enable_nacl=false
+     treat_warnings_as_errors=false
+     proprietary_codecs=false
+     ffmpeg_branding="Chromium"
+     symbol_level=1
+   '
+   autoninja -C out/Release chrome
+   ```
+   Expected classes of first-build failures and where to look:
+   - Missing V8 codegen files → Stage 0.2 outcome.
+   - Rust `unknown target` → `build/config/rust.gni` patch coverage.
+   - Mojo bindings / protobuf codegen → check cross-compile capability (build on ppc64 itself avoids this).
+   - Link failures citing `--whole-archive` → confirm `fix-rust-linking.patch` applied.
+   - Skia missing SSE shims → `skia-vsx-instructions.patch` and the SSE-to-VSX wrapper header (clang/gcc ship `emmintrin.h` shims via libgcc on ppc64).
+
+**Stage 3 — Triage unknowns.** Expect to need new one-off patches for:
+   - `components/zucchini` — has asm assumptions.
+   - `crashpad/util/misc/paths_linux.cc` — page-size assumptions.
+   - `base/threading/platform_thread_linux.cc` — sched_param tuning.
+   - `ui/gl` — GL loader on ppc64 without NVIDIA/AMD GPU drivers.
+   - `//tools/v8_context_snapshot` — snapshot build needs a ppc64-host v8 runner (if cross-building, set `v8_use_external_startup_data=true` and generate natively).
+   Landed as incremental commits on `ppc64le`.
+
+**Stage 4 — Proper replacements for the HACKs.**
+   1. Re-examine `[[clang::musttail]]` with the Fedora 44 clang; if supported, remove the three HACK patches.
+   2. Regenerate libvpx/libaom configs from source with the ppc64 toolchain of the build host; replace pregenerated-config patches with an in-tree generator under `tools/ppc64/regenerate_deps.sh`.
+   3. Reconcile the "debian" clang/rust patches — move them out of the ppc64 block into a toolchain-specific series.
+
+**Stage 5 — Runtime smoke & perf.**
+   - `content_shell`, `headless_shell`, `unit_tests` minimal suites.
+   - Basic Skia pixel diffs to validate VSX path.
+   - Minimal JS via `d8` (from V8) to confirm pointer compression + trap sequences don't crash.
+   - WebGPU: leave disabled.
+
+**Stage 6 — Upstreaming candidates.** Patches worth proposing upstream:
+   - `add-ppc64-architecture-string` + `add-ppc64-architecture-to-extensions` (PlatformArch::kPpc64).
+   - PartitionAlloc 64 KiB page support (already half-upstream for arm64 Linux, making it cpu-conditional for ppc64 is trivial).
+   - Sandbox seccomp ppc64 syscall ranges.
+   - Crashpad libcurl transport ppc64 fix.
+   - V8 Linux baseline flags (POWER8) — if V8 ppc64 backend survives upstream.
+   - PFFFT/ANGLE header fixes (arch-agnostic cleanups).
+   These would shrink the downstream delta every release.
+
+---
+
+## 6. Immediate next actions (when you sit at the Fedora host)
+
+```bash
+# 0. Make sure branch is pushed
+git push -u origin ppc64le
+
+# 1. On tle@192.168.1.247
+cd ~/Work
+fetch --no-history chromium || gclient config --name=src \
+    git@github.com:runlevel5/chromium.git
+cd src
+git fetch origin ppc64le && git checkout ppc64le
+gclient sync --with_branch_heads --with_tags --revision=src@HEAD
+
+# 2. Apply deferred patches
+patches/ppc64le/apply.sh
+
+# 3. Gen + build
+gn gen out/Release --args='target_cpu="ppc64" is_debug=false is_component_build=true is_clang=true use_remoteexec=false use_sysroot=false use_custom_libcxx=false enable_nacl=false treat_warnings_as_errors=false proprietary_codecs=false ffmpeg_branding="Chromium" symbol_level=1'
+autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
+```
+
+Capture `/tmp/build-01.log` and iterate from §Stage 3.
