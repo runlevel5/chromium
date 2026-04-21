@@ -390,6 +390,8 @@ bool ChromeRuntimeAPIDelegate::GetPlatformInfo(PlatformInfo* info) {
     info->arch = extensions::api::runtime::PlatformArch::kMips64;
   } else if (arch == "riscv64") {
     info->arch = extensions::api::runtime::PlatformArch::kRiscv64;
+  } else if (arch == "ppc64") {
+    info->arch = extensions::api::runtime::PlatformArch::kPpc64;
   } else {
     NOTREACHED();
   }
