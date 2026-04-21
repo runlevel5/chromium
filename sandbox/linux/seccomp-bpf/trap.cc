@@ -231,6 +231,20 @@ void Trap::SigSys(int nr, LinuxSigInfo* info, ucontext_t* ctx) {
       SetIsInSigHandler();
     }
 
+#if defined(__powerpc64__)
+    // On ppc64+glibc, some syscalls seem to accidentally negate the first
+    // parameter which causes checks against it to fail. For now, manually
+    // negate them back.
+    // TODO(sanastasio@raptorengineering.com): investigate this issue further
+    auto nr = SECCOMP_SYSCALL(ctx);
+    if (nr == __NR_openat || nr == __NR_mkdirat || nr == __NR_faccessat || nr == __NR_readlinkat ||
+        nr == __NR_renameat || nr == __NR_renameat2 || nr == __NR_newfstatat || nr == __NR_unlinkat) {
+        if (static_cast<int>(SECCOMP_PARM1(ctx)) > 0) {
+            SECCOMP_PARM1(ctx) = -SECCOMP_PARM1(ctx);
+        }
+    }
+#endif
+
     // Copy the seccomp-specific data into a arch_seccomp_data structure. This
     // is what we are showing to TrapFnc callbacks that the system call
     // evaluator registered with the sandbox.

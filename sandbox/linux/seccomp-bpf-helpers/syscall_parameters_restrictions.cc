@@ -43,13 +43,18 @@
 #define MAP_DROPPABLE 0x08  // Zero memory under memory pressure.
 #endif
 
-#if BUILDFLAG(IS_LINUX) && !defined(__arm__) && !defined(__aarch64__) && \
+#if BUILDFLAG(IS_LINUX) && !defined(__arm__) && !defined(__aarch64__) && !defined(__powerpc64__) && \
     !defined(PTRACE_GET_THREAD_AREA)
 // Also include asm/ptrace-abi.h since ptrace.h in older libc (for instance
 // the one in Ubuntu 16.04 LTS) is missing PTRACE_GET_THREAD_AREA.
 // asm/ptrace-abi.h doesn't exist on arm32 and PTRACE_GET_THREAD_AREA isn't
 // defined on aarch64, so don't try to include this on those platforms.
 #include <asm/ptrace-abi.h>
+#endif
+
+// On PPC64, TCGETS is defined in terms of struct termios, so we must include termios.h
+#ifdef __powerpc64__
+#include <termios.h>
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -109,6 +114,15 @@ inline bool IsArchitectureMips() {
   return false;
 #endif
 }
+
+inline bool IsArchitecturePPC64() {
+#if defined(__powerpc64__)
+  return true;
+#else
+  return false;
+#endif
+}
+
 
 // Ubuntu's version of glibc has a race condition in sem_post that can cause
 // it to call futex(2) with bogus op arguments. To workaround this, we need
@@ -288,8 +302,10 @@ ResultExpr RestrictFcntlCommands() {
   // operator.
   // Glibc overrides the kernel's O_LARGEFILE value. Account for this.
   uint64_t kOLargeFileFlag = O_LARGEFILE;
-  if (IsArchitectureX86_64() || IsArchitectureI386() || IsArchitectureMips())
+  if (IsArchitectureX86_64() || IsArchitectureI386() || IsArchitectureMips() \
+      || IsArchitecturePPC64())
     kOLargeFileFlag = 0100000;
+
 
   const Arg<int> cmd(1);
   const Arg<long> long_arg(2);
@@ -313,8 +329,17 @@ ResultExpr RestrictFcntlCommands() {
               F_SETLKW,
               F_GETLK,
               F_DUPFD,
-              F_DUPFD_CLOEXEC},
-             Allow())
+              F_DUPFD_CLOEXEC
+#if defined(__powerpc64__)
+// On PPC64, F_SETLK, F_GETLK, F_SETLKW are defined as the 64-bit variants
+// but glibc will sometimes still use the 32-bit versions. Allow both.
+              ,
+              5, /* F_GETLK (32) */
+              6, /* F_SETLK (32) */
+              7  /* F_SETLKW (32) */
+#endif
+              },
+            Allow())
       .Case(F_SETFL,
             If((long_arg & ~kAllowedMask) == 0, Allow()).Else(CrashSIGSYS()))
       .Case(F_ADD_SEALS,
@@ -323,7 +348,7 @@ ResultExpr RestrictFcntlCommands() {
   // clang-format on
 }
 
-#if defined(__i386__) || defined(__mips__)
+#if defined(__i386__) || defined(__mips__) || defined(__powerpc64__)
 ResultExpr RestrictSocketcallCommand() {
   // Unfortunately, we are unable to restrict the first parameter to
   // socketpair(2). Whilst initially sounding bad, it's noteworthy that very
@@ -483,7 +508,7 @@ ResultExpr RestrictPtrace() {
 #endif
   return Switch(request)
       .Cases({
-#if !defined(__aarch64__)
+#if !defined(__aarch64__) && !defined(__powerpc64__)
                  PTRACE_GETREGS, PTRACE_GETFPREGS, PTRACE_GET_THREAD_AREA,
                  PTRACE_GETREGSET,
 #endif
@@ -523,13 +548,14 @@ SANDBOX_EXPORT bpf_dsl::ResultExpr RestrictSockSendFlags(int sysno) {
   size_t argIndex;
   switch (sysno) {
 #if defined(__arm__) || \
-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS))
+    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS)) || \
+    defined(__powerpc64__)
     case __NR_send:
       argIndex = 3;
       break;
 #endif
 #if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
-    defined(__mips__) || defined(__aarch64__)
+    defined(__mips__) || defined(__aarch64__) || defined(__powerpc64__)
     case __NR_sendto:  // Could specify destination.
       argIndex = 3;
       break;

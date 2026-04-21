@@ -376,6 +376,8 @@ component("sandbox_services") {
 
 source_set("sandbox_services_headers") {
   sources = [
+    "system_headers/ppc64_linux_syscalls.h",
+    "system_headers/ppc64_linux_ucontext.h",
     "system_headers/arm64_linux_syscalls.h",
     "system_headers/arm_linux_syscalls.h",
     "system_headers/arm_linux_ucontext.h",

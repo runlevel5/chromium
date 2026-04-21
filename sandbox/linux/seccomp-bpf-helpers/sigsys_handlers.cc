@@ -384,7 +384,16 @@ intptr_t SIGSYSFstatatHandler(const struct arch_seccomp_data& args,
   if (args.nr == __NR_fstatat_default) {
     if (*reinterpret_cast<const char*>(args.args[1]) == '\0' &&
         args.args[3] == static_cast<uint64_t>(AT_EMPTY_PATH)) {
-      return syscall(__NR_fstat_default, static_cast<int>(args.args[0]),
+          int fd = static_cast<int>(args.args[0]);
+#if defined(__powerpc64__)
+      // On ppc64+glibc, some syscalls seem to accidentally negate the first
+      // parameter which causes checks against it to fail. For now, manually
+      // negate them back.
+      // TODO: Investigate the root cause and fix in glibc
+      if (fd < 0)
+        fd = -fd;
+#endif
+      return syscall(__NR_fstat_default, fd,
                      reinterpret_cast<default_stat_struct*>(args.args[2]));
     }
     return -reinterpret_cast<intptr_t>(fs_denied_errno);

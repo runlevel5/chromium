@@ -85,7 +85,7 @@ bool ChrootToSafeEmptyDir() {
   alignas(16) std::array<char, PTHREAD_STACK_MIN_CONST> stack_buf;
 
 #if defined(ARCH_CPU_X86_FAMILY) || defined(ARCH_CPU_ARM_FAMILY) || \
-    defined(ARCH_CPU_MIPS_FAMILY)
+    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_PPC64_FAMILY)
   // SAFETY: This is the `stack` argument of `clone(2)`. Because the stack grows
   // downward on these architectures, this is the topmost address of the memory
   // space for the stack, and the address will not be dereferenced.
@@ -96,7 +96,8 @@ bool ChrootToSafeEmptyDir() {
 
   int clone_flags = CLONE_FS | LINUX_SIGCHLD;
   void* tls = nullptr;
-#if (defined(ARCH_CPU_X86_64) || defined(ARCH_CPU_ARM_FAMILY)) && \
+#if (defined(ARCH_CPU_X86_64) || defined(ARCH_CPU_ARM_FAMILY) || \
+    defined(ARCH_CPU_PPC64_FAMILY)) && \
     !defined(MEMORY_SANITIZER)
   // Use CLONE_VM | CLONE_VFORK as an optimization to avoid copying page tables.
   // Since clone writes to the new child's TLS before returning, we must set a
@@ -104,6 +105,11 @@ bool ChrootToSafeEmptyDir() {
   // glibc performs syscalls by calling a function pointer in TLS, so we do not
   // attempt this optimization.
   // TODO(crbug.com/40196869) Broken in MSan builds after LLVM f1bb30a4956f.
+  //
+  // NOTE: Without CLONE_VM, fontconfig will attempt to reload configuration
+  // in every thread.  Since the rendered threads are sandboxed without
+  // filesystem access (e.g. to /etc/fonts/fonts.conf) this will cause font
+  // configuration loading failures and no fonts will be displayed!
   clone_flags |= CLONE_VM | CLONE_VFORK | CLONE_SETTLS;
 
   char tls_buf[PTHREAD_STACK_MIN_CONST] = {};

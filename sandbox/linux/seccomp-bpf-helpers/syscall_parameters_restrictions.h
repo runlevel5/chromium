@@ -56,7 +56,7 @@ SANDBOX_EXPORT bpf_dsl::ResultExpr RestrictMprotectFlags();
 // O_NONBLOCK | O_SYNC | O_LARGEFILE | O_CLOEXEC | O_NOATIME.
 SANDBOX_EXPORT bpf_dsl::ResultExpr RestrictFcntlCommands();
 
-#if defined(__i386__) || defined(__mips__)
+#if defined(__i386__) || defined(__mips__) || defined(__powerpc64__)
 // Restrict socketcall(2) to only allow socketpair(2), send(2), recv(2),
 // sendto(2), recvfrom(2), shutdown(2), sendmsg(2) and recvmsg(2).
 SANDBOX_EXPORT bpf_dsl::ResultExpr RestrictSocketcallCommand();

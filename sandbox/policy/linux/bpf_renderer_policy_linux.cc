@@ -17,6 +17,11 @@
 #include "sandbox/linux/system_headers/linux_syscalls.h"
 #include "sandbox/policy/linux/sandbox_linux.h"
 
+// On PPC64, TCGETS is defined in terms of struct termios, so we must include termios.h
+#ifdef __powerpc64__
+#include <termios.h>
+#endif
+
 // TODO(vignatti): replace the local definitions below with #include
 // <linux/dma-buf.h> once kernel version 4.6 becomes widely used.
 #include <linux/types.h>
@@ -86,7 +91,7 @@ ResultExpr RendererProcessPolicy::EvaluateSyscall(int sysno) const {
     case __NR_ftruncate64:
 #endif
 #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
-    defined(__aarch64__)
+    defined(__aarch64__) || defined(__powerpc64__)
     case __NR_getrlimit:
     case __NR_setrlimit:
 // We allow setrlimit to dynamically adjust the address space limit as

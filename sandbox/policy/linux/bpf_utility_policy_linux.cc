@@ -34,7 +34,7 @@ ResultExpr UtilityProcessPolicy::EvaluateSyscall(int sysno) const {
     case __NR_fdatasync:
     case __NR_fsync:
 #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
-    defined(__aarch64__)
+    defined(__aarch64__) || defined(__powerpc64__)
     case __NR_getrlimit:
 #endif
 #if defined(__i386__) || defined(__arm__)

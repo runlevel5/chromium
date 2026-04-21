@@ -173,6 +173,28 @@ struct kernel_stat {
   unsigned int __unused4;
   unsigned int __unused5;
 };
+#elif defined(__powerpc64__)
+struct kernel_stat {
+   unsigned long   st_dev;
+   ino_t           st_ino;
+   unsigned long   st_nlink;
+   mode_t          st_mode;
+   uid_t           st_uid;
+   gid_t           st_gid;
+   unsigned long   st_rdev;
+   long            st_size;
+   unsigned long   st_blksize;
+   unsigned long   st_blocks;
+   unsigned long   st_atime_;
+   unsigned long   st_atime_nsec_;
+   unsigned long   st_mtime_;
+   unsigned long   st_mtime_nsec_;
+   unsigned long   st_ctime_;
+   unsigned long   st_ctime_nsec_;
+   unsigned long   __unused4;
+   unsigned long   __unused5;
+   unsigned long   __unused6;
+};
 #endif
 
 #if !defined(AT_EMPTY_PATH)
