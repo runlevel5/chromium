@@ -198,7 +198,7 @@
 //     MUSTTAIL return Func1(d + 1);  // `Func1()` will be tail-called.
 //   }
 // ```
-#if __has_cpp_attribute(clang::musttail)
+#if __has_cpp_attribute(clang::musttail) && !defined(__powerpc64__)
 #define MUSTTAIL [[clang::musttail]]
 #else
 #define MUSTTAIL
