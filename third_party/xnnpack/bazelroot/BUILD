@@ -29,6 +29,14 @@ platform(
     ],
 )
 
+platform(
+    name = "linux_ppc64le",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:ppc64le",
+    ],
+)
+
 # A dummy clang toolchain for building them for any arch.
 
 filegroup(name = "empty")
