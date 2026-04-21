@@ -83,6 +83,8 @@ struct BASE_EXPORT MMapAllocator {
   constexpr static size_t AllocationChunkSize = 16384;
 #elif BUILDFLAG(IS_LINUX) && defined(ARCH_CPU_ARM64)
   constexpr static size_t AllocationChunkSize = 16384;
+#elif BUILDFLAG(IS_LINUX) && defined(ARCH_CPU_PPC64)
+  constexpr static size_t AllocationChunkSize = 16384;
 #else
   constexpr static size_t AllocationChunkSize = 4096;
 #endif
