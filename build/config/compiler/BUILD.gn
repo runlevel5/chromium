@@ -1072,7 +1072,8 @@ config("linker") {
         # errors. We only apply fatal warnings when using lld.
         ldflags += [ "-Wl,-fatal_warnings" ]
       }
-      if (!is_apple && current_os != "aix" && current_os != "zos") {
+      if (!is_apple && current_os != "aix" && current_os != "zos" &&
+          current_cpu != "ppc64") {
         ldflags += [ "-Wl,--fatal-warnings" ]
       }
     }
