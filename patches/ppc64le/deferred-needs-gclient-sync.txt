@@ -20,7 +20,15 @@ skia-vsx-instructions.patch                                       # third_party/
 dawn-fix-ppc64le-detection.patch                                  # third_party/dawn
 #
 # Category B — files exist in src tree but hunk context drifted on 149.x.
-# Needs manual rebase. Inspect with `patch -p1 --dry-run -i <patch>`.
-0002-third_party-libvpx-Remove-bad-ppc64-config.patch             # libvpx pregenerated configs
-0002-regenerate-xnn-buildgn.patch                                 # third_party/xnnpack/BUILD.gn
-fix-different-data-layouts.patch                                  # investigate
+# Rebased onto 149.x as individual commits on ppc64le branch:
+#   - libvpx pregenerated configs   -> commit d1496f64ee (replaces 0002+0003 pair)
+#   - fix-different-data-layouts    -> commit f6d198f362
+#
+# Category C — tool-generated output, do NOT rebase manually. Regenerate on
+# the build host after the generator-script patch (0001-add-xnn-ppc64el-support)
+# has been committed:
+#   cd third_party/xnnpack
+#   python3 generate_build_gn.py   # requires Bazel 8+
+#   git add BUILD.gn && git commit -m "ppc64le: regenerate xnnpack BUILD.gn"
+# Keeping the old patch file in patches/ppc64le/ for reference only:
+0002-regenerate-xnn-buildgn.patch
