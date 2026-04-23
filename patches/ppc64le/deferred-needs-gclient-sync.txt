@@ -1,34 +1,41 @@
-# Patches from series that failed to apply on the macOS host because the
-# relevant third_party directories are not populated (plain git clone vs full
-# gclient sync). Apply these on the Fedora PPC64LE build host AFTER running
-# `gclient sync`. Order follows series.
+# Patches that target git-submodule content (angle, boringssl, lss,
+# swiftshader, webrtc, libvpx/source/libvpx, skia, breakpad, v8, dawn,
+# perfetto). On the Fedora PPC64LE build host:
 #
-# Category A — target files live in gclient-managed third_party deps:
-0001-third_party-angle-Include-missing-header-cstddef-in-.patch   # third_party/angle
-0001-Add-PPC64-support-for-boringssl.patch                        # third_party/boringssl/src
-0002-Add-PPC64-generated-files-for-boringssl.patch                # third_party/boringssl
-0002-third_party-lss-kernel-structs.patch                         # third_party/lss
-0001-swiftshader-fix-build.patch                                  # third_party/swiftshader
-Rtc_base-system-arch.h-PPC.patch                                  # third_party/webrtc
-HACK-third_party-libvpx-use-generic-gnu.patch                     # third_party/libvpx/source
-0004-third_party-libvpx-work-around-ambiguous-vsx.patch           # third_party/libvpx/source
-skia-vsx-instructions.patch                                       # third_party/skia
-0001-Implement-support-for-ppc64-on-Linux.patch                   # third_party/breakpad
-0001-Force-baseline-POWER8-AltiVec-VSX-CPU-features-when-.patch   # v8
-0002-Add-ppc64-trap-instructions.patch                            # v8
-0001-Enable-ppc64-pointer-compression.patch                       # v8
-dawn-fix-ppc64le-detection.patch                                  # third_party/dawn
+#   # If using source tarball (chromium-*.tar.xz): nothing to do, deps present.
+#   # If using git checkout: init the submodules these patches target:
+#   git submodule update --init --depth=1 \
+#     third_party/angle third_party/boringssl/src third_party/lss \
+#     third_party/swiftshader third_party/webrtc \
+#     third_party/libvpx/source/libvpx third_party/skia \
+#     third_party/breakpad/breakpad v8 third_party/dawn third_party/perfetto
 #
-# Category B — files exist in src tree but hunk context drifted on 149.x.
-# Rebased onto 149.x as individual commits on ppc64le branch:
-#   - libvpx pregenerated configs   -> commit d1496f64ee (replaces 0002+0003 pair)
-#   - fix-different-data-layouts    -> commit f6d198f362
-#
-# Category C — tool-generated output, do NOT rebase manually. Regenerate on
-# the build host after the generator-script patch (0001-add-xnn-ppc64el-support)
-# has been committed:
+# Then apply these patches:
+
+0001-third_party-angle-Include-missing-header-cstddef-in-.patch     # third_party/angle
+0001-Add-PPC64-support-for-boringssl.patch                          # third_party/boringssl/src + third_party/perfetto
+0002-Add-PPC64-generated-files-for-boringssl.patch                  # third_party/boringssl/src
+0002-third_party-lss-kernel-structs.patch                           # third_party/lss
+0001-swiftshader-fix-build.patch                                    # third_party/swiftshader
+Rtc_base-system-arch.h-PPC.patch                                    # third_party/webrtc
+HACK-third_party-libvpx-use-generic-gnu.patch                       # third_party/libvpx/source/libvpx
+0004-third_party-libvpx-work-around-ambiguous-vsx.patch             # third_party/libvpx/source/libvpx
+skia-vsx-instructions.patch                                         # third_party/skia (rebased for 149.x)
+0001-Implement-support-for-ppc64-on-Linux.patch                     # third_party/breakpad/breakpad
+0001-Force-baseline-POWER8-AltiVec-VSX-CPU-features-when-.patch     # v8
+0002-Add-ppc64-trap-instructions.patch                              # v8
+0001-Enable-ppc64-pointer-compression.patch                         # v8
+dawn-fix-ppc64le-detection.patch                                    # third_party/dawn
+
+# All 14 verified clean against 149.x submodule HEADs via:
+#   patch -p1 --fuzz=2 --dry-run
+# on shallow-init submodules at pins recorded in chromium src.
+
+# ---------------------------------------------------------------------------
+# Tool-generated patch — do NOT rebase by hand. Regenerate by running the
+# xnnpack generator after its ppc64 support patch is applied:
 #   cd third_party/xnnpack
-#   python3 generate_build_gn.py   # requires Bazel 8+
-#   git add BUILD.gn && git commit -m "ppc64le: regenerate xnnpack BUILD.gn"
-# Keeping the old patch file in patches/ppc64le/ for reference only:
+#   python3 generate_build_gn.py    # requires Bazel 8+
+#   git add BUILD.gn
+# Kept in patches/ppc64le/ for reference only:
 0002-regenerate-xnn-buildgn.patch
