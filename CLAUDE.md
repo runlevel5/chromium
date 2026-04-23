@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## If you are resuming PPC64LE porting work
+
+Read `PLAN.md` at the repo root before anything else — it is the session handoff for the Fedora 44 PPC64LE port (`ppc64le` branch). It captures the patch series state, what was rebased last, and what the Fedora build host needs to do next.
+
 ## Rich existing guidance
 
 Before acting, consult the Chromium-maintained agent guidance (written for gemini-cli, but the rules apply to any AI agent):
