@@ -58,65 +58,112 @@ These are the only submodules the PPC64 patches touch. They aren't tracked in th
 
 ---
 
-## 3. Next actions — on the Fedora host `tle@192.168.1.247`
+## 3. Source sync to the Fedora host `tle@192.168.1.247`
 
-**Do not** set up depot_tools. Two viable ways to get a full source tree:
+**Approach:** plain `git` on the Fedora box. **Do not** use `depot_tools` / `gclient` (no PPC64 CIPD packages), and don't bother rsync'ing from the macOS prep box (the `ppc64le` branch is already pushed to GitHub; LAN rsync would save ~2 GB of submodule content out of ~15–20 GB total, not worth the filesystem-case and `.git/modules/` plumbing risk).
 
-### Option A — source tarball (simplest, matches `chromium.spec`)
+Target layout on Fedora: `~/Work/chromium/` (the source root, *not* `~/Work/src/`).
+
+### 3.1 Clone the branch
 
 ```bash
-# 149.0.7805.0 is a main-branch snapshot (PATCH=0). Tarballs on
-# commondatastorage.googleapis.com/chromium-browser-official/ only exist
-# for released versions. Pick the closest released tag — likely
-# 149.0.7805.<latest released patchlevel>. Confirm from:
-#   https://chromiumdash.appspot.com/releases?platform=Linux
-curl -O https://commondatastorage.googleapis.com/chromium-browser-official/chromium-149.0.7805.???.tar.xz
-# Extract (~30 GB), cd src, skip to §4.
+# Fresh ssh session on tle@192.168.1.247
+mkdir -p ~/Work && cd ~/Work
+git clone -b ppc64le git@github.com:runlevel5/chromium.git chromium
+cd chromium
+
+# Sanity checks
+git log --oneline -5
+#  expect HEAD ~ "Correct V8 PPC64 status: ..."
+git log --oneline ppc64le ^main | wc -l     # expect 32
+ls patches/ppc64le/ | head
 ```
 
-### Option B — git + selective submodule init (what we did here)
+If you want to avoid cloning the full history, add `--depth=50` to the clone — the `ppc64le` branch is only ~32 commits above `main`, so 50 is plenty and keeps the `.git/` small.
+
+### 3.2 Populate the submodules our PPC64 patches touch (~2 GB)
+
+These 11 are the ones verified against in this session. Shallow (`--depth=1`), parallel fetch.
 
 ```bash
-cd ~/Work
-git clone --depth=1 git@github.com:runlevel5/chromium.git src
-cd src
-git fetch --depth=1 origin ppc64le
-git checkout ppc64le
 git submodule update --init --depth=1 --jobs=6 \
-  third_party/angle third_party/boringssl/src third_party/breakpad/breakpad \
-  third_party/dawn third_party/libvpx/source/libvpx third_party/lss \
-  third_party/perfetto third_party/skia third_party/swiftshader \
-  third_party/webrtc v8
-# Need additional submodules for build — expect to add as ninja complains.
+  third_party/angle \
+  third_party/boringssl/src \
+  third_party/breakpad/breakpad \
+  third_party/dawn \
+  third_party/libvpx/source/libvpx \
+  third_party/lss \
+  third_party/perfetto \
+  third_party/skia \
+  third_party/swiftshader \
+  third_party/webrtc \
+  v8
 ```
 
-**Note:** Option B will miss many submodules the actual build needs (icu, protobuf, abseil, ffmpeg, etc. — Chromium has ~400+ submodules). Option A is likely less painful. If you pick B, expect to keep expanding the submodule-init list as the build demands.
+Check each landed at the expected pin (should match the pins listed in §2).
 
----
+### 3.3 Populate the remaining submodules needed for a full build
 
-## 4. Apply the submodule-touching patches
+Chromium has ~400 submodules. The 11 above only cover what our PPC64 patches modify; the build also wants `third_party/icu`, `abseil-cpp`, `protobuf`, `ffmpeg`, `harfbuzz`, `freetype`, `zlib`, `xnnpack` source, plus everything nested inside `v8/` / `skia/` / `angle/` for their own deps. Pull it all:
 
 ```bash
-cd ~/Work/chromium    # or wherever the 149.x tree is
-patches/ppc64le/apply.sh   # runs patch -p1 --fuzz=2 over deferred-needs-gclient-sync.txt
+# This is the big one — expect 10–20 GB down, 30–90 minutes depending on bandwidth.
+# --recursive picks up nested submodules inside v8/, skia/, etc.
+# --jobs=8 parallelizes. --depth=1 keeps each submodule shallow.
+git submodule update --init --recursive --depth=1 --jobs=8
 ```
 
-Expect all 13 to apply clean (already verified via dry-run).
+If the download dies mid-way, rerun — `git submodule update` is resumable. Occasionally a submodule's default branch doesn't contain the pinned SHA as a reachable ref on a shallow fetch; when that happens git falls back to a direct SHA fetch (you'll see `trying to directly fetch <sha>` in stderr, which worked on every submodule we tried on macOS).
 
-### Regenerate xnnpack BUILD.gn
+Post-sync sanity checks:
+```bash
+du -sh .git third_party v8            # ~ few hundred MB .git, ~10–15 GB third_party + v8
+ls v8/src/codegen/ppc/                 # non-empty
+ls v8/src/maglev/ppc/                  # non-empty
+ls third_party/skia/src/opts/          # non-empty
+git submodule status --recursive | grep -c '^[-+U]' || echo all-clean
+```
+
+### 3.4 Apply the build-time patches to submodule content
+
+The 21 "in-tree" patches are already committed on the branch; only the 14 submodule-targeting patches still need to run (plus the xnn-regenerate step, which is tool-output rather than a patch).
+
+```bash
+patches/ppc64le/apply.sh
+# internally: patch -p1 --fuzz=2 over the entries in
+# patches/ppc64le/deferred-needs-gclient-sync.txt
+```
+
+Expect all 14 to apply cleanly — every one was dry-run-verified on macOS against the exact submodule pins the branch references.
+
+### 3.5 Regenerate `third_party/xnnpack/BUILD.gn`
+
+This patch (`0002-regenerate-xnn-buildgn.patch`) is tool output, not hand-written. Run the generator instead of applying the patch.
 
 ```bash
 cd third_party/xnnpack
-python3 generate_build_gn.py      # requires Bazel 8+ on PATH
-# (the 0001-add-xnn-ppc64el-support.patch has already been committed in-tree
-#  on the ppc64le branch, so this run will produce ppc64-aware output)
+python3 generate_build_gn.py           # needs Bazel 8+ on PATH
+cd ../..
+git -C third_party/xnnpack add BUILD.gn
+git -C third_party/xnnpack -c user.email=... -c user.name=... \
+    commit -m "ppc64le: regenerate BUILD.gn"
 ```
+
+If Bazel isn't installed: `dnf install bazel` (Fedora 44 ships Bazel 7+; confirm it's 8+ with `bazel --version`). If unavailable, skip this step and expect xnnpack to build with stock upstream BUILD.gn — you'll lose ppc64-aware source-list generation but the build may still succeed in a reduced form.
+
+### 3.6 Keeping in sync across macOS ↔ Fedora going forward
+
+No rsync needed for iteration:
+
+- **When you rebase a patch on macOS:** commit on `ppc64le` branch, `git push`, then on Fedora `git pull`. If a patch now touches a submodule differently, `git submodule update --recursive` after pulling.
+- **When you fix something on Fedora:** commit on `ppc64le`, `git push`, pull back to macOS. Keep per-submodule fixes out of the parent branch (commit them in the submodule's own tree if you need to, but our current design keeps all fixes in patch files under `patches/ppc64le/` so they stay reviewable and travel with the main repo).
 
 ---
 
-## 5. First build attempt
+## 4. First build attempt
 
 ```bash
+# Still in ~/Work/chromium on the Fedora host.
 gn gen out/Release --args='
   target_cpu="ppc64"
   is_debug=false
@@ -134,7 +181,7 @@ gn gen out/Release --args='
 autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
 ```
 
-### Pre-flight verifications before the first build
+### 4.1 Pre-flight verifications before the first build
 
 1. **V8 PPC64 backend sanity check**: `ls v8/src/codegen/ppc/` and `ls v8/src/maglev/ppc/` — should contain codegen + macro-assembler + (for Maglev) mid-tier JIT code. Confirmed present on 149.x V8 (submodule pin `79af6bf0ba`, V8 14.9.154). PPC64 is an **externally-maintained port** in V8 (not the officially-supported x64/arm64 tier), owned by an IBM + Red Hat team (`PPC_OWNERS`). Google CI doesn't block V8 releases on PPC regressions, so a new release can occasionally ship with PPC temporarily broken until the port team catches up — survivable, just means an occasional follow-up patch. V8 has a ppc64 simulator CI builder (`V8 Linux - ppc64 - sim` in `v8/infra/testing/builders.pyl`).
 2. **Toolchain versions**:
@@ -146,9 +193,9 @@ autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
 
 ---
 
-## 6. Known risks / things to watch during build
+## 5. Known risks / things to watch during build
 
-- **V8 port breakage windows.** PPC64 is an externally-maintained V8 port (IBM/RH own it; see 5.1). When upstream V8 lands a new feature, there's a days-to-weeks window where PPC may not yet compile clean until the port team catches up. If the build breaks inside `v8/` after a Chromium roll, check `v8/OWNERS` and `PPC_OWNERS` for whoever is currently tracking ppc, look for a port commit on chromium-review.googlesource.com, cherry-pick it onto our branch.
+- **V8 port breakage windows.** PPC64 is an externally-maintained V8 port (IBM/RH own it; see §4.1). When upstream V8 lands a new feature, there's a days-to-weeks window where PPC may not yet compile clean until the port team catches up. If the build breaks inside `v8/` after a Chromium roll, check `v8/OWNERS` and `PPC_OWNERS` for whoever is currently tracking ppc, look for a port commit on chromium-review.googlesource.com, cherry-pick it onto our branch.
 - **`[[clang::musttail]]` disabled in 3 places** via HACK patches — fragments stacks on ppc64. With a new enough clang, try removing the HACK patches and see if musttail now works on ppc64 targets.
 - **Cross-compilation limitations**. Protobuf / mojo bindings / V8 snapshot typically build a native host binary first. If cross-building from x86, these break; fine when building natively on ppc64le.
 - **Rust `unknown target`** — `fix-rustc.patch` sets `rust_abi_target = "powerpc64le-unknown-linux-gnu"`. Verify rustc actually has that target installed: `rustc --print target-list | grep ppc64`.
@@ -158,7 +205,7 @@ autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
 
 ---
 
-## 7. Assessment of what's covered vs. what's missing
+## 6. Assessment of what's covered vs. what's missing
 
 See `patches/ppc64le/STATUS_AND_PLAN.md` for the fuller breakdown. Brief summary:
 
@@ -174,7 +221,7 @@ See `patches/ppc64le/STATUS_AND_PLAN.md` for the fuller breakdown. Brief summary
 
 ---
 
-## 8. Quick reference
+## 7. Quick reference
 
 | Thing | Path |
 |---|---|
@@ -195,4 +242,4 @@ See `patches/ppc64le/STATUS_AND_PLAN.md` for the fuller breakdown. Brief summary
 1. `git log ppc64le ^main | head -30` — confirm branch state is intact.
 2. `cat PLAN.md` (this file) — re-orient.
 3. Decide: stay in rebase mode here, or move to build iteration on `tle@192.168.1.247`?
-4. If moving to build host: follow §3–§5 above. Expect the first `autoninja` run to fail on one of: (a) missing submodule, (b) V8-ppc64 absence, (c) a hunk not listed here that bit-rotted between session end and build host checkout.
+4. If moving to build host: follow §3 (clone + submodules + patches) and §4 (build). Expect the first `autoninja` run to fail on one of: (a) a submodule the build wants that `--recursive` didn't pick up (rare but possible), (b) a hunk not listed here that bit-rotted between session end and build host checkout, (c) a clang/rustc version mismatch that `fix-different-data-layouts.patch` doesn't cover.
