@@ -32,10 +32,17 @@ dawn-fix-ppc64le-detection.patch                                    # third_part
 # on shallow-init submodules at pins recorded in chromium src.
 
 # ---------------------------------------------------------------------------
-# Tool-generated patch — do NOT rebase by hand. Regenerate by running the
-# xnnpack generator after its ppc64 support patch is applied:
+# Tool-generated patch — do NOT rebase by hand, do NOT apply via apply.sh.
+# The file stays in patches/ppc64le/ for reference only. Regenerate the real
+# BUILD.gn by running the xnnpack generator after its ppc64 support patch
+# (already committed in-tree as 0001-add-xnn-ppc64el-support.patch) is live:
 #   cd third_party/xnnpack
 #   python3 generate_build_gn.py    # requires Bazel 8+
 #   git add BUILD.gn
-# Kept in patches/ppc64le/ for reference only:
-0002-regenerate-xnn-buildgn.patch
+#
+# If apply.sh has partially applied this patch by mistake (e.g., it used to
+# be listed as live above), revert the submodule's working tree first:
+#   git -C third_party/xnnpack checkout -- BUILD.gn
+#
+# Intentionally NOT listed as an active entry — the line below is commented:
+#0002-regenerate-xnn-buildgn.patch
