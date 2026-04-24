@@ -218,6 +218,26 @@ No rsync needed for iteration:
 
 ## 4. First build attempt
 
+**Pre-requisite: write `build/config/gclient_args.gni`.** gclient normally creates this file post-sync, but our non-gclient build has no source for it, so `gn gen` fails with "Unable to load //build/config/gclient_args.gni". Use the tracked template:
+
+```bash
+cp patches/ppc64le/gclient_args.gni.in build/config/gclient_args.gni
+```
+
+**Pre-requisite: bring `gn` up to date.** Chromium 149 needs the `expand_directory_allowlist` dotfile schema added to gn upstream in late 2025. Fedora's packaged gn (rev 2345) predates it. Build gn from source and install to `~/.local/bin/` (shadows `/usr/bin/gn`):
+
+```bash
+mkdir -p ~/Work && cd ~/Work
+git clone https://gn.googlesource.com/gn
+cd gn
+python3 build/gen.py
+ninja -C out
+install -m 0755 out/gn ~/.local/bin/gn
+hash -r
+which gn && gn --version   # expect ~/.local/bin/gn and rev > 2345
+cd ~/Work/chromium
+```
+
 ```bash
 # Still in ~/Work/chromium on the Fedora host.
 gn gen out/Release --args='

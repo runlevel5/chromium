@@ -1,0 +1,38 @@
+# Template for //build/config/gclient_args.gni on non-gclient builds.
+# gclient sync normally writes this file; for a git-submodule-based PPC64
+# build we generate it statically with Linux-only defaults.
+#
+# Install:
+#   cp patches/ppc64le/gclient_args.gni.in build/config/gclient_args.gni
+#
+# Values mirror the defaults declared in //DEPS 'vars' block.
+
+build_with_chromium = true
+checkout_android = false
+checkout_android_prebuilts_build_tools = false
+checkout_cast3p = false
+checkout_chromium_autofill_test_dependencies = false
+checkout_chromium_password_manager_test_dependencies = false
+checkout_clang_coverage_tools = false
+checkout_clang_tidy = false
+checkout_clangd = false
+checkout_clusterfuzz_data = false
+checkout_copybara = false
+checkout_fuchsia = false
+checkout_fuchsia_internal = false
+checkout_fuchsia_no_hooks = false
+checkout_glic_e2e_tests = false
+checkout_google_internal = false
+checkout_ios_webkit = false
+checkout_js_coverage_modules = false
+checkout_legacy_src_internal = false
+checkout_mutter = false
+checkout_openxr = false
+checkout_pgo_profiles = false
+checkout_soda = false
+checkout_src_internal = false
+checkout_src_internal_infra = false
+checkout_telemetry_dependencies = false
+cros_boards = ""
+cros_boards_with_qemu_images = ""
+generate_location_tags = false
