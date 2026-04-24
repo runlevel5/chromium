@@ -163,6 +163,14 @@ git config --get-regexp '^submodule\..*\.update' | grep -c ' none$'   # ≥ 81 a
 
 If `git submodule update` dies mid-way, rerun — it's resumable. Occasionally a submodule's default branch doesn't contain the pinned SHA as a reachable ref on a shallow fetch; when that happens git falls back to a direct SHA fetch (`trying to directly fetch <sha>` in stderr), which has worked on every submodule we've tried.
 
+**Expected failure: HTTP 429 / `Short term server-time rate limit exceeded` from googlesource.com.** Their per-IP rate limiter trips when `--jobs=8 --recursive` fires too many concurrent fetches. The error is polite ("please slow down"), not fatal. Wait 5–10 minutes for the short-term window to clear, then retry with lower concurrency:
+
+```bash
+git submodule update --init --recursive --depth=1 --jobs=2   # or --jobs=1
+```
+
+Submodule update is idempotent — already-initialized submodules are skipped on retry, half-fetched ones get completed. Sequential `--jobs=1` is guaranteed not to rate-limit.
+
 Post-sync sanity checks:
 ```bash
 du -sh .git third_party v8            # ~ few hundred MB .git, ~10–15 GB third_party + v8
