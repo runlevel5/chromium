@@ -136,7 +136,7 @@ autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
 
 ### Pre-flight verifications before the first build
 
-1. **V8 PPC64 backend still present**: `ls v8/src/codegen/ppc/` — must contain `*.cc` codegen files. IBM's V8-PPC backend was slated for removal; if it's gone on 149.x, fall back to OpenPOWER V8 fork or pin to a release that still ships it.
+1. **V8 PPC64 backend sanity check**: `ls v8/src/codegen/ppc/` and `ls v8/src/maglev/ppc/` — should contain codegen + macro-assembler + (for Maglev) mid-tier JIT code. Confirmed present on 149.x V8 (submodule pin `79af6bf0ba`, V8 14.9.154). PPC64 is an **externally-maintained port** in V8 (not the officially-supported x64/arm64 tier), owned by an IBM + Red Hat team (`PPC_OWNERS`). Google CI doesn't block V8 releases on PPC regressions, so a new release can occasionally ship with PPC temporarily broken until the port team catches up — survivable, just means an occasional follow-up patch. V8 has a ppc64 simulator CI builder (`V8 Linux - ppc64 - sim` in `v8/infra/testing/builders.pyl`).
 2. **Toolchain versions**:
    - `clang --version` — need 16+ (17+ preferred for data-layout compatibility with rustc 1.73+).
    - `rustc --version` — 1.73+.
@@ -148,7 +148,7 @@ autoninja -C out/Release chrome 2>&1 | tee /tmp/build-01.log
 
 ## 6. Known risks / things to watch during build
 
-- **V8 ppc64 backend absence** (see 5.1). Biggest single risk.
+- **V8 port breakage windows.** PPC64 is an externally-maintained V8 port (IBM/RH own it; see 5.1). When upstream V8 lands a new feature, there's a days-to-weeks window where PPC may not yet compile clean until the port team catches up. If the build breaks inside `v8/` after a Chromium roll, check `v8/OWNERS` and `PPC_OWNERS` for whoever is currently tracking ppc, look for a port commit on chromium-review.googlesource.com, cherry-pick it onto our branch.
 - **`[[clang::musttail]]` disabled in 3 places** via HACK patches — fragments stacks on ppc64. With a new enough clang, try removing the HACK patches and see if musttail now works on ppc64 targets.
 - **Cross-compilation limitations**. Protobuf / mojo bindings / V8 snapshot typically build a native host binary first. If cross-building from x86, these break; fine when building natively on ppc64le.
 - **Rust `unknown target`** — `fix-rustc.patch` sets `rust_abi_target = "powerpc64le-unknown-linux-gnu"`. Verify rustc actually has that target installed: `rustc --print target-list | grep ppc64`.
