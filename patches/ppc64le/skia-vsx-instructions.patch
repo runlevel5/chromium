@@ -136,7 +136,7 @@ Index: chromium-144.0.7559.59/third_party/skia/src/opts/SkRasterPipeline_opts.h
 +++ chromium-144.0.7559.59/third_party/skia/src/opts/SkRasterPipeline_opts.h
 @@ -1,5 +1,6 @@
  /*
-  * Copyright 2018 Google Inc.
+  * Copyright 2018 Google LLC
 + * Copyright 2023-2024 Raptor Engineering, LLC
   *
   * Use of this source code is governed by a BSD-style license that can be
