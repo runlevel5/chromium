@@ -31,9 +31,20 @@ while IFS= read -r p; do
     echo "MISSING $p"; fail=$((fail+1)); continue
   fi
   echo "=== Applying $p"
-  if ! patch -p1 --fuzz=2 -i "$HERE/$p"; then
+  # --forward (-N): if the patch looks already-applied or reversed, skip it
+  #   cleanly instead of prompting. Critical for re-runs on partially applied
+  #   state — otherwise patch stalls waiting for [y/n] and wedges the script.
+  # --batch: never prompt, answer [no] to every question.
+  # --no-backup-if-mismatch: don't leave .orig siblings on fuzz.
+  # --reject-file=- / -r-: send rejects to stdout (visible) instead of .rej
+  #   sitting next to the file (quieter error triage, still visible in log).
+  if ! patch -p1 --fuzz=2 --forward --batch --no-backup-if-mismatch \
+             -r /tmp/ppc64_reject.$$ \
+             -i "$HERE/$p"; then
     echo "FAIL   $p"; fail=$((fail+1))
+    [ -s /tmp/ppc64_reject.$$ ] && { echo "-- rejects --"; cat /tmp/ppc64_reject.$$; }
   fi
+  rm -f /tmp/ppc64_reject.$$
 done < "$LIST"
 
 echo "Done. Failures: $fail"
