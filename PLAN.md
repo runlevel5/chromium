@@ -104,7 +104,29 @@ Check each landed at the expected pin (should match the pins listed in §2).
 
 ### 3.3 Populate the remaining submodules needed for a full build
 
-Chromium has ~400 submodules. The 11 above only cover what our PPC64 patches modify; the build also wants `third_party/icu`, `abseil-cpp`, `protobuf`, `ffmpeg`, `harfbuzz`, `freetype`, `zlib`, `xnnpack` source, plus everything nested inside `v8/` / `skia/` / `angle/` for their own deps. Pull it all:
+Chromium has ~400 submodules. The 11 above only cover what our PPC64 patches modify; the build also wants `third_party/icu`, `abseil-cpp`, `protobuf`, `ffmpeg`, `harfbuzz`, `freetype`, `zlib`, `xnnpack` source, plus everything nested inside `v8/` / `skia/` / `angle/` for their own deps.
+
+**First — skip Googler-only submodules**, or `git submodule update` will prompt for credentials on `chrome-internal.googlesource.com` 81 times. gclient tags these via `gclient-condition = checkout_src_internal`, but plain git doesn't honor that, so we mark them `update = none` in local config:
+
+```bash
+# Inside ~/Work/chromium
+git config --file .gitmodules --name-only --get-regexp '\.url$' | \
+  while read key; do
+    url=$(git config --file .gitmodules --get "$key")
+    if [[ "$url" == https://chrome-internal.googlesource.com/* ]]; then
+      name="${key#submodule.}"
+      name="${name%.url}"
+      git config "submodule.${name}.update" none
+    fi
+  done
+
+# Expect 81
+git config --get-regexp '^submodule\..*\.update' | grep -c ' none$'
+```
+
+(Optional — also skip platform-gated submodules you don't need for a Linux-PPC64 build: android / ios / chromeos / fuchsia / mac. Same pattern but matching `.gclient-condition` keys; saves another few GB of download. See session history in git for the full filter if you want it.)
+
+Now pull the rest:
 
 ```bash
 # This is the big one — expect 10–20 GB down, 30–90 minutes depending on bandwidth.
