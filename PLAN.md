@@ -106,36 +106,62 @@ Check each landed at the expected pin (should match the pins listed in §2).
 
 Chromium has ~400 submodules. The 11 above only cover what our PPC64 patches modify; the build also wants `third_party/icu`, `abseil-cpp`, `protobuf`, `ffmpeg`, `harfbuzz`, `freetype`, `zlib`, `xnnpack` source, plus everything nested inside `v8/` / `skia/` / `angle/` for their own deps.
 
-**First — skip Googler-only submodules**, or `git submodule update` will prompt for credentials on `chrome-internal.googlesource.com` 81 times. gclient tags these via `gclient-condition = checkout_src_internal`, but plain git doesn't honor that, so we mark them `update = none` in local config:
+**First — skip Googler-only submodules**, or `git submodule update` will prompt for credentials on `chrome-internal.googlesource.com`. gclient tags these via `gclient-condition = checkout_src_internal`, but plain git doesn't honor that, so we mark them `update = none` in local config. The chrome-internal URLs appear at **multiple nesting levels** — top-level Chromium has 81 of them, and several submodules (angle, v8, etc.) reference more in their own `.gitmodules`. So we apply the skip in a loop.
 
 ```bash
 # Inside ~/Work/chromium
-git config --file .gitmodules --name-only --get-regexp '\.url$' | \
-  while read key; do
-    url=$(git config --file .gitmodules --get "$key")
-    if [[ "$url" == https://chrome-internal.googlesource.com/* ]]; then
-      name="${key#submodule.}"
-      name="${name%.url}"
-      git config "submodule.${name}.update" none
-    fi
-  done
 
-# Expect 81
-git config --get-regexp '^submodule\..*\.update' | grep -c ' none$'
-```
+# 1. Disable interactive prompts — any chrome-internal that slips through
+#    the skip filter will fail in ~1 second instead of blocking.
+export GIT_TERMINAL_PROMPT=0
 
-(Optional — also skip platform-gated submodules you don't need for a Linux-PPC64 build: android / ios / chromeos / fuchsia / mac. Same pattern but matching `.gclient-condition` keys; saves another few GB of download. See session history in git for the full filter if you want it.)
+# 2. Define the skip helper (shell function used twice below).
+define_skip() {
+  cat <<'EOF'
+if [ -f .gitmodules ]; then
+  git config --file .gitmodules --name-only --get-regexp "\.url\$" | \
+    while read key; do
+      url=$(git config --file .gitmodules --get "$key")
+      case "$url" in
+        https://chrome-internal.googlesource.com/*)
+          name="${key#submodule.}"; name="${name%.url}"
+          git config "submodule.${name}.update" none
+          ;;
+      esac
+    done
+fi
+EOF
+}
 
-Now pull the rest:
+# 3. Apply at top level
+eval "$(define_skip)"
 
-```bash
-# This is the big one — expect 10–20 GB down, 30–90 minutes depending on bandwidth.
-# --recursive picks up nested submodules inside v8/, skia/, etc.
-# --jobs=8 parallelizes. --depth=1 keeps each submodule shallow.
+# 4. Pull first layer (top-level submodules) non-recursively.
+#    ~2 GB, a few minutes.
+git submodule update --init --depth=1 --jobs=8
+
+# 5. Apply the same skip inside every newly-initialized submodule
+#    (angle, v8, etc. — each has its own .gitmodules with more chrome-internal refs).
+git submodule foreach --recursive "$(define_skip)"
+
+# 6. Now pull the rest recursively. 10–20 GB, 30–90 minutes.
 git submodule update --init --recursive --depth=1 --jobs=8
+
+# 7. If you see another chrome-internal credential prompt surface during step 6,
+#    it means a deeper nesting level showed up that step 5 couldn't preempt
+#    (the submodule hadn't been cloned yet). Ctrl-C, re-run steps 5 and 6.
+#    Chromium's submodule tree is at most 3–4 levels deep, so 2–3 iterations
+#    cover everything.
 ```
 
-If the download dies mid-way, rerun — `git submodule update` is resumable. Occasionally a submodule's default branch doesn't contain the pinned SHA as a reachable ref on a shallow fetch; when that happens git falls back to a direct SHA fetch (you'll see `trying to directly fetch <sha>` in stderr, which worked on every submodule we tried on macOS).
+**Sanity check:**
+```bash
+git config --get-regexp '^submodule\..*\.update' | grep -c ' none$'   # ≥ 81 at top level
+```
+
+(Optional — also skip platform-gated submodules you don't need for a Linux-PPC64 build: android / ios / chromeos / fuchsia / mac. Same `update = none` pattern but matching `.gclient-condition` keys with conditions that don't include `checkout_linux`; saves another few GB of download.)
+
+If `git submodule update` dies mid-way, rerun — it's resumable. Occasionally a submodule's default branch doesn't contain the pinned SHA as a reachable ref on a shallow fetch; when that happens git falls back to a direct SHA fetch (`trying to directly fetch <sha>` in stderr), which has worked on every submodule we've tried.
 
 Post-sync sanity checks:
 ```bash
